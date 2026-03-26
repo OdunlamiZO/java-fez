@@ -132,6 +132,12 @@ public class FezOkHttp implements Fez {
 
     private <T extends FezResponse> T newCall(Request request, TypeReference<T> typeRef)
             throws IOException {
+        return newCall(request, typeRef, true);
+    }
+
+    private <T extends FezResponse> T newCall(
+            Request request, TypeReference<T> typeRef, boolean retryOnInvalidSession)
+            throws IOException {
         try (okhttp3.Response response = client.newCall(request).execute()) {
             String json = null;
             if (response.body() != null) {
@@ -140,6 +146,17 @@ public class FezOkHttp implements Fez {
 
             T result = JsonUtil.toValue(json, typeRef);
             result.setCode(String.valueOf(response.code()));
+
+            if (retryOnInvalidSession
+                    && "Invalid session".equalsIgnoreCase(result.getDescription())) {
+                synchronized (this) {
+                    authToken = null;
+                }
+
+                ensureAuthenticated();
+
+                return newCall(request, typeRef, false);
+            }
 
             return result;
         }
